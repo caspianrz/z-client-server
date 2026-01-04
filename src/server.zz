@@ -1,0 +1,109 @@
+type i8 = "i8";
+type i16 = "i16";
+type i32 = "i32";
+type i64 = "i64";
+type void = "void";
+
+type in_addr = struct {
+	s_addr : i32,
+};
+
+type sockaddr_in = struct {
+	sin_family : i16,
+	sin_port : i16,
+	sin_addr : in_addr,
+	sin_zero : i32[2],
+};
+
+let socket : i32->i32->i32->i32;
+let bind : i32->*sockaddr_in->i32->i32;
+let listen : i32->i32->i32;
+let accept : i32->*sockaddr_in->*i32->i32;
+let close : i32->i32;
+let exit : i32->void;
+
+let printf : *i8->..->i32;
+let read : i32->*i8->i64->i64;
+let write : i32->*i8->i64->i64;
+
+let strlen : *i8->i64;
+
+// memory allocation
+let malloc : i64->*void;
+let free : *void->void;
+
+// uint16_t htons(uint32_t)
+let htons : i16->i16;
+
+let main : void->i32 = func() : i32 {
+	let server_fd : i32 = 0;
+	let client_fd : i32 = 0;
+	let port : i16 = 8000;
+	let s_addr : in_addr = { s_addr = 0 };
+	let addr : sockaddr_in = {
+		sin_family = 2, // AF_INET
+		sin_port = htons(port), // PORT 8000
+		sin_addr = s_addr, // INADDR_ANY
+		sin_zero = [0,0],
+	};
+
+	// 1) Create socket:
+	server_fd = socket(2, 1, 0); // 2->AF_INET, 1->SOCK_STREAM
+	
+	if server_fd
+		?? < 0 => { printf("Error\n"); }
+		:: => { printf("server_fd: %d\n", server_fd); } // error
+	endif;
+
+	// 2) Bind
+	let bind_status : i32 = 0;
+	if bind_status = bind(server_fd, &>addr, (@sizeof(addr)/8))
+		?? < 0 => {
+			printf("Error binding to port: %d with status: %d\n", port, bind_status);
+			close(server_fd);
+			exit(1);
+		}
+		:: => {
+			printf("Bound to port %d\n", port);
+		}
+	endif;
+
+	// 3) Listen:
+	let listen_status : i32 = listen(server_fd, 1);
+	if listen_status
+		?? < 0 => {
+			printf("Error listening\n");
+			close(server_fd);
+			exit(1);
+		}
+		:: => {
+			printf("Listening on port %d\n", port);
+		}
+	endif;
+
+	// 4) accept client
+	let addr_len : i32 = 0;
+	let buffer : *i8 = malloc(1024);
+	client_fd = accept(server_fd, &>addr, &>addr_len);
+	if client_fd
+		?? < 0 => {
+			printf("Error accepting.\n");
+			close(server_fd);
+			exit(1);
+		}
+		:: => {
+			printf("Accepted client with fd: %d\n", client_fd);
+		}
+	endif;
+
+	read(client_fd, buffer, 1024);
+	printf("Client said: %s\n", buffer);
+	free(buffer);
+
+	let response : *i8 = "Hello from Z.";
+	write(client_fd, response, strlen(response)); 
+
+	close(client_fd);
+	close(server_fd);
+	return 0;
+};
